@@ -1,0 +1,212 @@
+{ config, pkgs, ... }:
+let
+  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/master.tar.gz";
+in
+{
+  # Imports
+  imports = [
+    ./hardware-configuration.nix
+    (import "${home-manager}/nixos")
+  ];
+
+  # Bootloader configuration
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelModules = [ "kvm-intel" ];
+
+  # Hardware graphics acceleration
+  hardware.graphics = {
+    enable = true;
+    extraPackages = with pkgs; [
+      intel-media-driver
+      intel-compute-runtime
+    ];
+  };
+  hardware.intel-gpu-tools.enable = true;
+
+
+  zramSwap = {
+    enable = true;
+    algorithm = "zstd";        # best speed/efficiency
+    memoryPercent = 25;        # 25% of RAM → light, safe
+    priority = 100;
+  };
+  boot.kernelParams = [ "swappiness=10" ];  # low = prefer RAM
+
+  # Power management
+  services.thermald.enable = true;
+  services.upower.enable = true;
+  powerManagement.enable = true;
+  # powerManagement.powertop.enable = true;
+#   services.tlp = {
+#     enable = true;
+#     settings = {
+#       CPU_SCALING_GOVERNOR_ON_AC = "powersave";
+#       CPU_SCALING_GOVERNOR_ON_BAT = "powersave";
+#       CPU_ENERGY_PERF_POLICY_ON_AC = "power";
+#       CPU_ENERGY_PERF_POLICY_ON_BAT = "power";
+#       CPU_MIN_PERF_ON_AC = 0;
+#       CPU_MAX_PERF_ON_AC = 100;
+#       CPU_MIN_PERF_ON_BAT = 0;
+#       CPU_MAX_PERF_ON_BAT = 20;
+#       CPU_BOOST_ON_AC = 0;
+#       CPU_BOOST_ON_BAT = 0;
+#       START_CHARGE_THRESH_BAT0 = 40;
+#       STOP_CHARGE_THRESH_BAT0 = 80;
+#     };
+#   };
+  services.auto-cpufreq.settings = {
+  battery = {
+    governor = "powersave";
+    energy_performance_preference = "power";
+    turbo = "never";
+    # Add these critical lines:
+    scaler_min_freq = 400000;  # 400MHz minimum
+    scaler_max_freq = "20%";   # This was missing!
+  };
+  charger = {
+    governor = "performance";
+    energy_performance_preference = "performance";
+    turbo = "auto";
+    # Remove energy_perf_bias entirely
+  };
+};
+
+
+
+  # Enable libvirtd for QEMU/KVM
+  virtualisation.libvirtd.enable = true;
+
+  # Networking settings
+  networking.networkmanager.enable = true;
+  networking.networkmanager.wifi.powersave = true;
+  networking.hostName = "nixos";
+
+  programs.ssh.forwardX11 = true;
+  services.openssh.enable = true;
+  services.mullvad-vpn.enable = true;
+
+
+  # Time zone
+  time.timeZone = "America/Chicago";
+
+  # Localization settings
+  i18n.defaultLocale = "en_US.UTF-8";
+
+  # Keymap settings for X11
+  services.xserver.xkb = {
+    layout = "us";
+    variant = "";
+  };
+  # User account configuration
+  users.users.user = {
+    isNormalUser = true;
+    description = "First Last";
+    extraGroups = [ "networkmanager" "wheel" "audio" "video" "libvirtd" ];
+    packages = with pkgs; [];
+  };
+  # users.defaultUserShell = "${pkgs.oils-for-unix}/bin/ysh";
+# mkdir -p ~/.config/oils       # for oshrc and yshrc
+# mkdir -p ~/.local/share/oils  # for osh_history
+
+  programs.bash = {
+    promptInit = ''
+      PS1='-> '
+    '';
+    shellAliases = {
+      fetch = "bash ~/.config/myfetch/treefetch";
+  };
+  };
+
+  programs.neovim = {
+    enable = true;
+    defaultEditor = true;
+    vimAlias = true;
+    viAlias = true;
+  };
+
+
+  # Allow unfree packages
+  nixpkgs.config.allowUnfree = true;
+
+  # System packages
+  environment.systemPackages = with pkgs; [
+    brave
+    wezterm
+
+    pcmanfm
+
+    git
+    unzip
+    wl-clipboard
+    wget
+    gnupg
+    virt-manager
+    libguestfs
+    qemu
+    libvirt
+    virt-viewer
+
+    btop
+    fastfetch
+    cbonsai
+
+    joplin
+    joplin-desktop
+    bitwarden-desktop
+
+    libqalculate
+    qalculate-gtk
+
+    openai-whisper
+    wtype
+    ffmpeg
+  ];
+  fonts.packages = with pkgs; [ font-awesome ];
+
+  # X11 and desktop environment configuration
+  services.xserver.enable = true;
+  services.xserver.displayManager.lightdm.enable = false;
+  services.xserver.desktopManager.xterm.enable = false;
+  xdg.portal = {
+    enable = true;
+    wlr.enable = true;
+  };
+  services.fprintd.enable = true;
+  services.geoclue2.enable = false;
+  services.blueman.enable = false;  # if no Bluetooth
+
+
+  # Window manager - Sway
+  programs.sway = {
+    enable = true;
+    extraPackages = with pkgs; [
+      rofi
+      brightnessctl
+      pulseaudio
+      grim
+      slurp
+      i3blocks
+      eww
+      swayidle
+      swaylock
+      autotiling-rs
+      orchis-theme
+
+    ];
+  };
+
+  home-manager.users.user = import ./home.nix;
+
+
+  # Audio setup: Enable PipeWire
+  services.pipewire = {
+    enable = true;
+    pulse.enable = true;
+    alsa.enable = true;
+  };
+
+  # NixOS version
+  system.stateVersion = "24.11";
+}
